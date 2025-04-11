@@ -12,6 +12,13 @@ function AnimalCategory() {
     category_id: '',
     image: null,
   });
+  const [showFormCatId, setShowFormCatId] = useState(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    price: '',
+    image: null,
+    category_id: ''
+  });
 
   useEffect(() => {
     fetchData();
@@ -30,6 +37,40 @@ function AnimalCategory() {
   const getItemsForCategory = (catId) => {
     return items.filter(item => item.Category_id === catId);
   };
+
+  const handleFormChange = (e) => {
+    const { name, value, type, files } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === 'file' ? files[0] : value
+    }));
+  };
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const data = new FormData();
+    data.append('name', formData.name);
+    data.append('price', formData.price);
+    data.append('category_id', formData.category_id);
+    data.append('image', formData.image);
+  
+    fetch('http://localhost/animals.php?action=add_item', {
+      method: 'POST',
+      body: data
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          alert('Item added!');
+          setShowFormCatId(null);
+          fetchData();
+        } else {
+          alert(data.error || 'Failed to add item');
+        }
+      })
+      .catch(err => console.error('Error submitting form:', err));
+  };
+  
 
   const handleEditClick = (item) => {
     setEditingItem(item.id);
@@ -79,6 +120,28 @@ function AnimalCategory() {
       .catch(err => console.error('Error updating item:', err));
   };
 
+  const handleDelete = (id) => {
+    if(!window.confirm('Are you sure you want to delete this item?')) {
+      return;
+    }
+    const formData1 = new FormData();
+    formData1.append('id', id);
+    fetch('http://localhost/animals.php?action=delete_item', {
+      method: 'POST',
+      body: formData1
+    }).then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        alert('Item deleted!');
+        // setEditingItem(null);
+        fetchData();
+      } else {
+        alert(data.error || 'Failed to delete item');
+      }
+    })
+    .catch(err => console.error('Error deleting item:', err));
+  }
+
   return (
     <div className="container mt-4">
       {categories.length === 0 && <p>Loading categories...</p>}
@@ -87,6 +150,23 @@ function AnimalCategory() {
         return (
           <div key={category.id} className="mb-4">
             <h2>{category.name}</h2>
+            <button className='btn btn-primary mb-2'onClick={() => {
+  if (showFormCatId === category.id) {
+    setShowFormCatId(null);
+    setFormData({
+      name: '',
+      price: '',
+      image: null,
+      category_id: ''
+    });
+  } else {
+    setShowFormCatId(category.id);
+    setFormData(prev => ({
+      ...prev,
+      category_id: category.id // ✅ Set this manually
+    }));
+  }
+}}>{category.id === showFormCatId ? 'Close Form' : 'Add Item'} </button>
             {categoryItems.length > 0 ? (
               <div className="row row-cols-1 row-cols-md-3 g-4">
                 {categoryItems.map(item => (
@@ -102,6 +182,12 @@ function AnimalCategory() {
                         >
                           Edit
                         </button>
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleDelete(item.id)}
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -110,6 +196,54 @@ function AnimalCategory() {
             ) : (
               <p className="text-muted">Not available</p>
             )}
+
+            {showFormCatId === category.id && (
+              <form onSubmit={handleSubmit} encType="multipart/form-data" className="mb-3">
+                <input
+                  type="text"
+                  name="name"
+                  placeholder="Name"
+                  className="form-control mb-2"
+                  onChange={handleFormChange}
+                  required
+                />
+                <input
+                  type="number"
+                  name="price"
+                  placeholder="Price"
+                  className="form-control mb-2"
+                  onChange={handleFormChange}
+                  required
+                />
+                <input
+                  type="file"
+                  name="image"
+                  className="form-control mb-2"
+                  onChange={handleFormChange}
+                  required
+                />
+                <input
+                  type="hidden"
+                  name="category_id"
+                  value={category.id}
+                  onChange={handleFormChange}
+                />
+                <button type="submit" className="btn btn-success me-2">Add Item</button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowFormCatId(null)}
+                >
+                  Cancel
+                </button>
+              </form>
+            )}
+
+
+
+
+
+
 
             {editingItem && editFormData.category_id === category.id.toString() && (
               <form onSubmit={handleEditSubmit} className="mt-3" encType="multipart/form-data">
