@@ -138,6 +138,7 @@ function AnimalCategory() {
                   onChange={handleEditChange}
                 />
                 <button type="submit" className="btn btn-success">Update Item</button>
+                <button className="btn btn-success" onClick={() => setEditingItem(null)}>Close</button>
               </form>
             )}
           </div>
