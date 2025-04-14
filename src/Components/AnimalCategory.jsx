@@ -92,15 +92,17 @@ function AnimalCategory() {
         data1.append('price', formData.price);
         data1.append('category_id', formData.category_id);
         
-        if (formData.image && formData.image.length > 0) {
+        if (Array.isArray(formData.image) && formData.image.length > 0) {
             for (let i = 0; i < formData.image.length; i++) {
                 data1.append('images[]', formData.image[i]);
             }
-        }
+        }        
         
         if (modalType === 'edit') {
             data1.append('id', formData.id);
+            formData.existingImages.forEach(img => data1.append('existingImages[]', img));
         }
+          
         
         try {
             const response = await fetch(`http://localhost/animals.php?action=${modalType === 'edit' ? 'edit_item' : 'add_item'}`, {
@@ -181,7 +183,8 @@ function AnimalCategory() {
                 name: '',
                 price: '',
                 category_id: '', 
-                image: null,
+                image: [],
+                existingImages: [],
             });
             setModalType('add');
             setShowModal(true);
@@ -318,9 +321,9 @@ function AnimalCategory() {
                 </div>
             )}
 
-            {formData.image && formData.image.length > 0 && (
-            <div className="mb-2 d-flex flex-wrap gap-2">
-        {formData.image.map((file, idx) => (
+{Array.isArray(formData.image) && formData.image.length > 0 && (
+  <div className="mb-2 d-flex flex-wrap gap-2">
+    {formData.image.map((file, idx) => (
         <div key={idx} style={{ position: 'relative' }}>
                 <img
                 src={URL.createObjectURL(file)}
