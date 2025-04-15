@@ -6,8 +6,8 @@ export default function LoaderOverlay() {
                 position: 'fixed',
                 top: 0,
                 left: 0,
-                width: '100vw',
-                height: '100vh',
+                width: '100%',
+                height: '100%',
                 backgroundColor: 'rgba(0, 0, 0, 0.5)',
                 display: 'flex',
                 justifyContent: 'center',
@@ -15,7 +15,7 @@ export default function LoaderOverlay() {
                 zIndex: 9999,
             }}
         >
-            <img src="/Loading_icon.gif" alt="Loading..." style={{ width: '50px', height: '50px' }} />
+            <img src="/Loading_icon.gif" alt="Loading..." style={{ width: '450px', height: '450px' }} />
         </div>
     );
 }
