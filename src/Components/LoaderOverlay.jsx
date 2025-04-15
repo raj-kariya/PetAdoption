@@ -1,27 +1,21 @@
-
-import React from 'react';
-
-function LoaderOverlay() {
+import React from "react";
+export default function LoaderOverlay() {
     return (
         <div
             style={{
                 position: 'fixed',
                 top: 0,
                 left: 0,
-                width: '100%',
-                height: '100%',
-                backgroundColor: 'rgba(0, 0, 0, 0.5)', // Semi-transparent background
+                width: '100vw',
+                height: '100vh',
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
-                zIndex: 1000, // Ensure it's on top
+                zIndex: 9999,
             }}
         >
-            <div className="spinner-border text-light" role="status">
-                <span className="visually-hidden">Loading...</span>
-            </div>
+            <img src="/Loading_icon.gif" alt="Loading..." style={{ width: '50px', height: '50px' }} />
         </div>
     );
 }
-
-export default LoaderOverlay;

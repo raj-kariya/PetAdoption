@@ -18,81 +18,66 @@ function AnimalCategory() {
     const [showModal, setShowModal] = useState(false);
     const [modalType, setModalType] = useState('add');
     const [selectedItem, setSelectedItem] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
     const [fetchLoading, setFetchLoading] = useState(false);
     // Fetch categories and items on mount
     useEffect(() => {
         fetchData();
     }, []);
 
-    const fetchData = async () => {
-        setFetchLoading(true); 
-        const timeoutId = setTimeout(() => {
-            setFetchLoading(false);
-            alert('Loading data timed out. Please try again.');
-        }, 10000);
+    const runWithLoader = async (asyncFn) => {
+        setFetchLoading(true);
         try {
-            const response = await fetch('http://localhost/animals.php?action=get_all');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const data = await response.json();
-            setCategories(data.categories || []);
-            setItems(data.items || []);
+          await asyncFn();
         } catch (err) {
-            console.error('Error fetching data:', err);
-            alert('Failed to fetch data. Please try again later.');
+          console.error(err);
         } finally {
-            clearTimeout(timeoutId);
-            setFetchLoading(false); 
+          setFetchLoading(false);
         }
-    };
+      };      
+
+      const fetchData = async () => {
+        await runWithLoader(async () => {
+          const response = await fetch('http://localhost/animals.php?action=get_all');
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          const data = await response.json();
+          setCategories(data.categories || []);
+          setItems(data.items || []);
+        });
+      };
+      
 
     const getItemsForCategory = (catId) => items.filter(item => item.Category_id === catId);
 
     const handleExistingImageDelete = async (index) => {
-        setFetchLoading(true); 
         const imageToDelete = formData.existingImages[index];
-        try {
-            await fetch('http://localhost/animals.php?action=delete_image', {
-                method: 'POST',
-                body: new URLSearchParams({ image: imageToDelete, item_id: formData.id }),
-            });
-    
-            // Update existing images after deletion
-            setFormData(prev => ({
-                ...prev,
-                existingImages: prev.existingImages.filter((_, i) => i !== index),
-            }));
-    
-            // Option 1: Re-fetch item data
-            // fetchData(); // Re-fetch all data to get updated item info
-    
-            // Option 2: Update the specific selectedItem if editing
-            if(selectedItem){
-              let updatedImages = selectedItem.Image;
-              try{
-                updatedImages = JSON.parse(updatedImages);
-                if (!Array.isArray(updatedImages)){
-                  updatedImages = [updatedImages]
-                }
-                updatedImages = updatedImages.filter((_, i) => i !== index);
-                if(updatedImages.length===1){
-                    updatedImages = updatedImages[0];
-                }
-                selectedItem.Image = JSON.stringify(updatedImages);
-                setSelectedItem(selectedItem);
-              }catch(err){
-                console.log(err);
-              }
+      
+        await runWithLoader(async () => {
+          await fetch('http://localhost/animals.php?action=delete_image', {
+            method: 'POST',
+            body: new URLSearchParams({ image: imageToDelete, item_id: formData.id }),
+          });
+      
+          setFormData(prev => ({
+            ...prev,
+            existingImages: prev.existingImages.filter((_, i) => i !== index),
+          }));
+      
+          if (selectedItem) {
+            let updatedImages = selectedItem.Image;
+            try {
+              updatedImages = JSON.parse(updatedImages);
+              if (!Array.isArray(updatedImages)) updatedImages = [updatedImages];
+              updatedImages = updatedImages.filter((_, i) => i !== index);
+              if (updatedImages.length === 1) updatedImages = updatedImages[0];
+              selectedItem.Image = JSON.stringify(updatedImages);
+              setSelectedItem({ ...selectedItem }); // force re-render
+            } catch (err) {
+              console.log(err);
             }
-        } catch (err) {
-            console.error('Error deleting image:', err);
-            alert('Failed to delete image. Please try again.');
-        }finally{
-            setFetchLoading(false); 
-        }
-    };
+          }
+        });
+      };
+      
 
     const handleImageDelete = async (index) => {
         setFetchLoading(true);
@@ -114,11 +99,18 @@ function AnimalCategory() {
     const handleFormChange = (e) => {
         const { name, value, type, files } = e.target;
         if (type === 'file') {
-            setFormData(prev => ({ ...prev, [name]: Array.from(files) }));
+            const newFiles = Array.from(files);
+            setFormData(prev => ({
+                ...prev,
+                image: [...newFiles] // Append new files
+            }));
+    
+            
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
+
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -126,9 +118,7 @@ function AnimalCategory() {
             alert('Please fill out all required fields.');
             return;
         }
-    
-        setIsLoading(true); 
-    
+        setFetchLoading(true); // Set loading to true here.
         try {
             const data = new FormData();
             data.append('name', formData.name);
@@ -155,20 +145,19 @@ function AnimalCategory() {
     
             const result = await response.json();
     
-            setIsLoading(false);
-    
             if (result.success) {
-                alert(modalType === 'edit' ? 'Item updated!' : 'Item added!');
-                resetForm(); 
-                fetchData(); 
-                setShowModal(false); 
+                // alert(modalType === 'edit' ? 'Item updated!' : 'Item added!');
+                resetForm();
+                fetchData();
+                setShowModal(false);
             } else {
                 alert(result.error || 'Something went wrong');
             }
         } catch (error) {
-            setIsLoading(false); // Stop loading (even on error)
             console.error('Submit error:', error);
             alert('Failed to submit. Please try again.');
+        } finally {
+            setFetchLoading(false); // Set loading to false here.
         }
     };
 
@@ -207,8 +196,8 @@ function AnimalCategory() {
     };
 
     const handleDelete = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this item?')) return;
-        setFetchLoading(true);
+        if(!window.confirm('Are you sure you want to delete this item?')) return;
+        setFetchLoading(true); 
         try {
             await fetch('http://localhost/animals.php?action=delete_item', {
                 method: 'POST',
@@ -220,7 +209,7 @@ function AnimalCategory() {
         } catch (err) {
             console.error('Error deleting item:', err);
             alert('Failed to delete item. Please try again.');
-        }finally{
+        } finally {
             setFetchLoading(false); 
         }
     };
@@ -252,25 +241,31 @@ function AnimalCategory() {
                                 <div key={item.id} className="col">
                                     <div className="card h-100">
                                         <Carousel interval={null} indicators={false}>
-                                            {(() => {
-                                                let images;
+                                        {(() => {
+                                            let images = item.Image;
+                                            if (typeof images === 'string') {
                                                 try {
-                                                    images = JSON.parse(item.Image);
-                                                    if (!Array.isArray(images)) images = [images];
-                                                } catch {
-                                                    images = [item.Image];
+                                                    images = JSON.parse(images);
+                                                } catch (e) {
+                                                    images = [images]; // Treat as single image if JSON parsing fails
                                                 }
-                                                return images.map((img, idx) => (
-                                                    <Carousel.Item key={idx}>
-                                                        <img
-                                                            src={`http://localhost/uploads/${img}`}
-                                                            alt={`Image of ${item.Name}`}
-                                                            className="d-block w-100"
-                                                            style={{ maxHeight: '580px', objectFit: 'cover' }}
-                                                        />
-                                                    </Carousel.Item>
-                                                ));
-                                            })()}
+                                            }
+                                            if (!Array.isArray(images)) {
+                                                images = [images];
+                                            }
+
+                                            return images.map((img, idx) => (
+                                                <Carousel.Item key={idx}>
+                                                    <img
+                                                        src={`http://localhost/uploads/${img}`}
+                                                        alt={`Image of ${item.Name}`}
+                                                        className="d-block w-100"
+                                                        style={{ maxHeight: '580px', objectFit: 'cover' }}
+                                                    />
+                                                </Carousel.Item>
+                                            ));
+                                        })()}
+
                                         </Carousel>
                                         <div className="card-body">
                                             <h5 className="card-title">{item.Name}</h5>
@@ -340,9 +335,13 @@ function AnimalCategory() {
                             multiple
                             ref={fileInputRef}
                             className="form-control mb-2"
-                            onChange={(e) =>
-                                setFormData(prev => ({ ...prev, image: Array.from(e.target.files) }))
-                            }
+                            onChange={(e) => {
+                                const newFiles = Array.from(e.target.files);
+                                setFormData(prev => ({
+                                  ...prev,
+                                  image: [...prev.image, ...newFiles], 
+                                }));
+                              }}
                             accept='image/*'
                             required={modalType === 'add'}
                         />
