@@ -1,8 +1,8 @@
-import { useEffect, useState,useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import { Modal, Button } from 'react-bootstrap';
-// import { Await } from 'react-router-dom';
+import { Modal, Button, ProgressBar } from 'react-bootstrap';
 import { Carousel } from 'react-bootstrap';
+import LoaderOverlay from './LoaderOverlay';
 function AnimalCategory() {
     const fileInputRef = useRef(null);
     const [categories, setCategories] = useState([]);
@@ -18,348 +18,414 @@ function AnimalCategory() {
     const [showModal, setShowModal] = useState(false);
     const [modalType, setModalType] = useState('add');
     const [selectedItem, setSelectedItem] = useState(null);
-    
+    const [isLoading, setIsLoading] = useState(false);
+    const [fetchLoading, setFetchLoading] = useState(false);
+    // Fetch categories and items on mount
     useEffect(() => {
         fetchData();
     }, []);
-    
-    const fetchData = () => {
-        fetch('http://localhost/animals.php?action=get_all')
-        .then(res => res.json())
-        .then(data => {
+
+    const fetchData = async () => {
+        setFetchLoading(true); 
+        const timeoutId = setTimeout(() => {
+            setFetchLoading(false);
+            alert('Loading data timed out. Please try again.');
+        }, 10000);
+        try {
+            const response = await fetch('http://localhost/animals.php?action=get_all');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
             setCategories(data.categories || []);
             setItems(data.items || []);
-        })
-        .catch(err => console.error('Error fetching data:', err));
-    };
-    
-    const getItemsForCategory = (catId) => {
-        return items.filter(item => item.Category_id === catId);
-    };
-    const handleExistingImageDelete = (index) => {
-        const imageToDelete = formData.existingImages[index];
-      
-        
-        fetch('http://localhost/animals.php?action=delete_image', {
-          method: 'POST',
-          body: new URLSearchParams({ image: imageToDelete, item_id: formData.id }),
-        });
-      
-        
-        setFormData((prev) => ({
-          ...prev,
-          existingImages: prev.existingImages.filter((_, i) => i !== index),
-        }));
-      };
-      
-      const handleImageDelete = (index) => {
-        const newImages = formData.image.filter((_, i) => i !== index);
-      
-        setFormData((prev) => ({
-          ...prev,
-          image: newImages,
-        }));
-      
-        
-        if (newImages.length === 0 && fileInputRef.current) {
-          fileInputRef.current.value = null;
+        } catch (err) {
+            console.error('Error fetching data:', err);
+            alert('Failed to fetch data. Please try again later.');
+        } finally {
+            clearTimeout(timeoutId);
+            setFetchLoading(false); 
         }
-      };
-      
-      
+    };
+
+    const getItemsForCategory = (catId) => items.filter(item => item.Category_id === catId);
+
+    const handleExistingImageDelete = async (index) => {
+        setFetchLoading(true); 
+        const imageToDelete = formData.existingImages[index];
+        try {
+            await fetch('http://localhost/animals.php?action=delete_image', {
+                method: 'POST',
+                body: new URLSearchParams({ image: imageToDelete, item_id: formData.id }),
+            });
+    
+            // Update existing images after deletion
+            setFormData(prev => ({
+                ...prev,
+                existingImages: prev.existingImages.filter((_, i) => i !== index),
+            }));
+    
+            // Option 1: Re-fetch item data
+            // fetchData(); // Re-fetch all data to get updated item info
+    
+            // Option 2: Update the specific selectedItem if editing
+            if(selectedItem){
+              let updatedImages = selectedItem.Image;
+              try{
+                updatedImages = JSON.parse(updatedImages);
+                if (!Array.isArray(updatedImages)){
+                  updatedImages = [updatedImages]
+                }
+                updatedImages = updatedImages.filter((_, i) => i !== index);
+                if(updatedImages.length===1){
+                    updatedImages = updatedImages[0];
+                }
+                selectedItem.Image = JSON.stringify(updatedImages);
+                setSelectedItem(selectedItem);
+              }catch(err){
+                console.log(err);
+              }
+            }
+        } catch (err) {
+            console.error('Error deleting image:', err);
+            alert('Failed to delete image. Please try again.');
+        }finally{
+            setFetchLoading(false); 
+        }
+    };
+
+    const handleImageDelete = async (index) => {
+        setFetchLoading(true);
+        try {
+            const newImages = formData.image.filter((_, i) => i !== index);
+            setFormData(prev => ({ ...prev, image: newImages }));
+    
+            // Reset file input if no images remain
+            if (newImages.length === 0 && fileInputRef.current) {
+                fileInputRef.current.value = null;
+            }
+        } catch (e) {
+            console.log('there is some error ' + e);
+        } finally {
+            setFetchLoading(false);
+        }
+    };
 
     const handleFormChange = (e) => {
         const { name, value, type, files } = e.target;
-      
         if (type === 'file') {
-          setFormData((prev) => ({
-            ...prev,
-            [name]: files, // stores the full FileList
-          }));
+            setFormData(prev => ({ ...prev, [name]: Array.from(files) }));
         } else {
-          setFormData((prev) => ({
-            ...prev,
-            [name]: value,
-          }));
+            setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
-    
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-        
-        const data1 = new FormData();
-        data1.append('name', formData.name);
-        data1.append('price', formData.price);
-        data1.append('category_id', formData.category_id);
-        
-        if (Array.isArray(formData.image) && formData.image.length > 0) {
-            for (let i = 0; i < formData.image.length; i++) {
-                data1.append('images[]', formData.image[i]);
-            }
-        }        
-        
-        if (modalType === 'edit') {
-            data1.append('id', formData.id);
-            formData.existingImages.forEach(img => data1.append('existingImages[]', img));
+        if (!formData.name || !formData.price || !formData.category_id) {
+            alert('Please fill out all required fields.');
+            return;
         }
-          
-        
+    
+        setIsLoading(true); 
+    
         try {
+            const data = new FormData();
+            data.append('name', formData.name);
+            data.append('price', formData.price);
+            data.append('category_id', formData.category_id);
+    
+            if (formData.image && formData.image.length > 0) {
+                formData.image.forEach(img => data.append('images[]', img));
+            }
+    
+            if (modalType === 'edit') {
+                data.append('id', formData.id);
+                formData.existingImages.forEach(img => data.append('existingImages[]', img));
+            }
+    
             const response = await fetch(`http://localhost/animals.php?action=${modalType === 'edit' ? 'edit_item' : 'add_item'}`, {
                 method: 'POST',
-                body: data1,
+                body: data,
             });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                alert(modalType === 'edit' ? 'Item updated!' : 'Item added!');
-                setShowModal(false);
-                fetchData();
-            } else {
-                alert(data.error || 'Something went wrong');
+    
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-        } catch (err) {
-            console.error('Submit error:', err);
+    
+            const result = await response.json();
+    
+            setIsLoading(false);
+    
+            if (result.success) {
+                alert(modalType === 'edit' ? 'Item updated!' : 'Item added!');
+                resetForm(); 
+                fetchData(); 
+                setShowModal(false); 
+            } else {
+                alert(result.error || 'Something went wrong');
+            }
+        } catch (error) {
+            setIsLoading(false); // Stop loading (even on error)
+            console.error('Submit error:', error);
+            alert('Failed to submit. Please try again.');
         }
     };
-    
-    
+
+    const resetForm = () => {
+        setFormData({
+            id: '',
+            name: '',
+            price: '',
+            category_id: '',
+            image: [],
+            existingImages: [],
+        });
+        if (fileInputRef.current) fileInputRef.current.value = null;
+    };
+
     const handleEditClick = (item) => {
         let images = [];
-      
         try {
-          const parsed = JSON.parse(item.Image);
-          images = Array.isArray(parsed) ? parsed : [parsed];
+            images = JSON.parse(item.Image);
+            if (!Array.isArray(images)) images = [images];
         } catch {
-          // if parsing fails, treat as single image string
-          images = item.Image ? [item.Image] : [];
+            images = item.Image ? [item.Image] : [];
         }
-      
+
         setSelectedItem(item);
         setFormData({
-          id: item.id,
-          name: item.Name,
-          price: item.Price,
-          category_id: item.Category_id,
-          image: null,
-          existingImages: images,
+            id: item.id,
+            name: item.Name,
+            price: item.Price,
+            category_id: item.Category_id,
+            image: [],
+            existingImages: images,
         });
         setModalType('edit');
         setShowModal(true);
-      };
-      
-    
-    const handleDelete = (id) => {
-        if (!window.confirm('Are you sure you want to delete this item?')) {
-            return;
-        }
-        const formData1 = new FormData();
-        formData1.append('id', id);
-        fetch('http://localhost/animals.php?action=delete_item', {
-            method: 'POST',
-            body: formData1,
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert('Item deleted!');
-                fetchData();
-            } else {
-                alert(data.error || 'Failed to delete item');
-            }
-        })
-        .catch(err => console.error('Error deleting item:', err));
     };
-    
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this item?')) return;
+        setFetchLoading(true);
+        try {
+            await fetch('http://localhost/animals.php?action=delete_item', {
+                method: 'POST',
+                body: new URLSearchParams({ id }),
+            });
+
+            alert('Item deleted!');
+            fetchData();
+        } catch (err) {
+            console.error('Error deleting item:', err);
+            alert('Failed to delete item. Please try again.');
+        }finally{
+            setFetchLoading(false); 
+        }
+    };
+
     return (
         <div className="container mt-4">
-        <div className="d-flex justify-content-end mb-3">
-        <button
-        className="btn btn-primary"
-        onClick={() => {
-            setFormData({
-                id: '',
-                name: '',
-                price: '',
-                category_id: '', 
-                image: [],
-                existingImages: [],
-            });
-            setModalType('add');
-            setShowModal(true);
-        }}
-        >
-        Add Item
-        </button>
-        </div>
-        {categories.length === 0 && <p>Loading categories...</p>}
-        {categories.map((category) => {
-            const categoryItems = getItemsForCategory(category.id);
-            return (
-                <div key={category.id} className="mb-4">
-                <h2>{category.name}</h2>
-                {categoryItems.length > 0 ? (
-                    <div className="row row-cols-1 row-cols-md-3 g-4">
-                    {categoryItems.map(item => (
-                        <div key={item.id} className="col">
-                        <div className="card h-100">
-                        {/* <img src={`http://localhost/uploads/${item.Image}`} className="card-img-top" alt={item.Name} /> */}
-                        
-                        {/* We have multiple images so */}
-                        
-                        
-                        <Carousel interval={null} indicators={false}>
-                            {(() => {
-                                let images = [];
-                                try {
-                                images = JSON.parse(item.Image);
-                                if (!Array.isArray(images)) {
-                                    images = [images];
-                                }
-                                } catch {
-                                images = [item.Image];
-                                }
-
-                                return images.map((img, idx1) => (
-                                <Carousel.Item key={idx1}>
-                                    <img
-                                    src={`http://localhost/uploads/${img}`}
-                                    className="d-block w-100"
-                                    alt={`Image of ${item.Name}`}
-                                    style={{ maxHeight: '580px', objectFit: 'cover' }}
-                                    />
-                                </Carousel.Item>
-                                ));
-                            })()}
-                        </Carousel>
-                        
-                        
-                        
-                        
-                        
-                        <div className="card-body">
-                        <h5 className="card-title">{item.Name}</h5>
-                        <p className="card-text">Price: ₹{item.Price}</p>
-                        <button className="btn btn-sm btn-warning" onClick={() => handleEditClick(item)}>Edit</button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>Delete</button>
-                        </div>
-                        </div>
-                        </div>
-                    ))}
-                    </div>
-                ) : (
-                    <p className="text-muted">Not available</p>
-                )}
-                </div>
-            );
-        })}
-        
-        <Modal show={showModal} onHide={() => setShowModal(false)}>
-        <Modal.Header closeButton>
-        <Modal.Title>{modalType === 'add' ? 'Add Item' : 'Edit Item'}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-        <form onSubmit={handleSubmit} encType="multipart/form-data">
-            <select
-            name="category_id"
-            className="form-control mb-2"
-            onChange={handleFormChange}
-            value={formData.category_id}
-            required
-            >
-            <option value="">Select Category</option>
-            {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>
-                {cat.name}
-                </option>
-            ))}
-            </select>
-            <input type="text" name="name" placeholder="Name" className="form-control mb-2" onChange={handleFormChange} value={formData.name} required />
-            <input type="number" name="price" placeholder="Price" className="form-control mb-2" onChange={handleFormChange} value={formData.price} required />
-            <input
-                type="file"
-                name="image"
-                className="form-control mb-2"
-                multiple
-                ref={fileInputRef}
-                onChange={(e) => {
-                setFormData((prev) => ({ ...prev, image: Array.from(e.target.files) }));
-                }}
-                required={modalType === 'add'}
-            // required={modalType === 'add'}
-            />
-            {formData.existingImages.length > 0 && (
-                <div className="mb-2 d-flex flex-wrap gap-2">
-                    {formData.existingImages.map((img, idx) => (
-                    <div key={idx} style={{ position: 'relative' }}>
-                        <img
-                        src={`http://localhost/uploads/${img}`}
-                        alt={`Existing ${idx}`}
-                        style={{ height: '100px', width: '100px', objectFit: 'cover', borderRadius: '8px' }}
-                        />
-                        <button
-                        type="button"
-                        onClick={() => handleExistingImageDelete(idx)}
-                        style={{
-                            position: 'absolute',
-                            top: 0,
-                            right: 0,
-                            background: 'rgba(255, 0, 0, 0.7)',
-                            border: 'none',
-                            color: 'white',
-                            borderRadius: '50%',
-                            width: '24px',
-                            height: '24px',
-                            cursor: 'pointer',
-                        }}
-                        >
-                        &times;
-                        </button>
-                    </div>
-                    ))}
-                </div>
-            )}
-
-{Array.isArray(formData.image) && formData.image.length > 0 && (
-  <div className="mb-2 d-flex flex-wrap gap-2">
-    {formData.image.map((file, idx) => (
-        <div key={idx} style={{ position: 'relative' }}>
-                <img
-                src={URL.createObjectURL(file)}
-                alt={`Preview ${idx}`}
-                style={{ height: '100px', width: '100px', objectFit: 'cover', borderRadius: '8px' }}
-                />
+            {fetchLoading && <LoaderOverlay />}
+            <div className="d-flex justify-content-end mb-3">
                 <button
-                type="button"
-                onClick={() => handleImageDelete(idx)}
-                style={{
-                    position: 'absolute',
-                    top: 0,
-                    right: 0,
-                    background: 'rgba(255, 0, 0, 0.7)',
-                    border: 'none',
-                    color: 'white',
-                    borderRadius: '50%',
-                    width: '24px',
-                    height: '24px',
-                    cursor: 'pointer',
-                }}
+                    className="btn btn-primary"
+                    onClick={() => {
+                        resetForm();
+                        setModalType('add');
+                        setShowModal(true);
+                    }}
                 >
-                &times;
+                    Add Item
                 </button>
             </div>
+
+            {categories.length === 0 && <p>Loading categories...</p>}
+
+            {categories.map(category => (
+                <div key={category.id} className="mb-4">
+                    <h2>{category.name}</h2>
+                    {getItemsForCategory(category.id).length > 0 ? (
+                        <div className="row row-cols-1 row-cols-md-3 g-4">
+                            {getItemsForCategory(category.id).map(item => (
+                                <div key={item.id} className="col">
+                                    <div className="card h-100">
+                                        <Carousel interval={null} indicators={false}>
+                                            {(() => {
+                                                let images;
+                                                try {
+                                                    images = JSON.parse(item.Image);
+                                                    if (!Array.isArray(images)) images = [images];
+                                                } catch {
+                                                    images = [item.Image];
+                                                }
+                                                return images.map((img, idx) => (
+                                                    <Carousel.Item key={idx}>
+                                                        <img
+                                                            src={`http://localhost/uploads/${img}`}
+                                                            alt={`Image of ${item.Name}`}
+                                                            className="d-block w-100"
+                                                            style={{ maxHeight: '580px', objectFit: 'cover' }}
+                                                        />
+                                                    </Carousel.Item>
+                                                ));
+                                            })()}
+                                        </Carousel>
+                                        <div className="card-body">
+                                            <h5 className="card-title">{item.Name}</h5>
+                                            <p className="card-text">Price: ₹{item.Price}</p>
+                                            <button className="btn btn-warning btn-sm" onClick={() => handleEditClick(item)}>Edit</button>
+                                            <button className="btn btn-danger btn-sm" onClick={() => handleDelete(item.id)}>Delete</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-muted">Not available</p>
+                    )}
+                </div>
             ))}
-        </div>
-    )}
 
+            {/* Modal */}
+            <Modal show={showModal} onHide={() => setShowModal(false)}>
+                <Modal.Header closeButton>
+                    <Modal.Title>{modalType === 'add' ? 'Add Item' : 'Edit Item'}</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                
 
-       
-        
-        <Button type="submit" variant="success">{modalType === 'add' ? 'Add Item' : 'Update Item'}</Button>
-        </form>
-        </Modal.Body>
-        </Modal>
+                    <form onSubmit={handleSubmit}>
+                        {/* Category Dropdown */}
+                        <select
+                            name="category_id"
+                            className="form-control mb-2"
+                            value={formData.category_id}
+                            onChange={handleFormChange}
+                            required
+                        >
+                            <option value="">Select Category</option>
+                            {categories.map(cat => (
+                                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                            ))}
+                        </select>
+
+                        {/* Name Input */}
+                        <input
+                            type="text"
+                            name="name"
+                            placeholder="Name"
+                            className="form-control mb-2"
+                            value={formData.name}
+                            onChange={handleFormChange}
+                            required
+                        />
+
+                        {/* Price Input */}
+                        <input
+                            type="number"
+                            name="price"
+                            placeholder="Price"
+                            className="form-control mb-2"
+                            value={formData.price}
+                            onChange={handleFormChange}
+                            required
+                        />
+
+                        {/* File Input */}
+                        <input
+                            type="file"
+                            name="image"
+                            multiple
+                            ref={fileInputRef}
+                            className="form-control mb-2"
+                            onChange={(e) =>
+                                setFormData(prev => ({ ...prev, image: Array.from(e.target.files) }))
+                            }
+                            accept='image/*'
+                            required={modalType === 'add'}
+                        />
+
+                        {/* Existing Images */}
+                        {formData.existingImages.length > 0 && (
+                            <div className="mb-2 d-flex flex-wrap gap-2">
+                                {formData.existingImages.map((img, idx) => (
+                                    <div key={idx} style={{ position: 'relative' }}>
+                                        <img
+                                            src={`http://localhost/uploads/${img}`}
+                                            alt={`Existing ${idx}`}
+                                            style={{
+                                                height: '100px',
+                                                width: '100px',
+                                                objectFit: 'cover',
+                                                borderRadius: '8px',
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => handleExistingImageDelete(idx)}
+                                            style={{
+                                                position: 'absolute',
+                                                top: 0,
+                                                right: 0,
+                                                backgroundColor: 'rgba(255, 0, 0, 0.7)',
+                                                borderRadius: '50%',
+                                                width: '24px',
+                                                height: '24px',
+                                                color: '#fff',
+                                                borderWidth: 0,
+                                            }}
+                                        >
+                                            &times;
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* New Image Previews */}
+                        {Array.isArray(formData.image) && formData.image.length > 0 && (
+                            <div className="mb-2 d-flex flex-wrap gap-2">
+                                {formData.image.map((file, idx) => (
+                                    <div key={idx} style={{ position: 'relative' }}>
+                                        <img
+                                            src={URL.createObjectURL(file)}
+                                            alt={`Preview ${idx}`}
+                                            style={{
+                                                height: '100px',
+                                                width: '100px',
+                                                objectFit: 'cover',
+                                                borderRadius: '8px',
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => handleImageDelete(idx)}
+                                            style={{
+                                                position: 'absolute',
+                                                top: 0,
+                                                right: 0,
+                                                backgroundColor: 'rgba(255, 0, 0, 0.7)',
+                                                borderRadius: '50%',
+                                                width: '24px',
+                                                height: '24px',
+                                                color: '#fff',
+                                                borderWidth: 0,
+                                            }}
+                                        >
+                                            &times;
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Submit Button */}
+                        <Button type="submit" variant="success">{modalType === 'add' ? 'Add Item' : 'Update Item'}</Button>
+                    </form>
+                </Modal.Body>
+            </Modal>
         </div>
     );
 }
